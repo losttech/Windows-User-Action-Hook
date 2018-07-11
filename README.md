@@ -6,6 +6,8 @@ A one stop library for global windows user actions such mouse, keyboard, clipboa
 
 Kindly report only issues/bugs here . For programming help or questions use [StackOverflow](http://stackoverflow.com/questions/tagged/windows-user-action-hook) with the tag EventHook or Windows-User-Action-Hook.
 
+* [API Documentation](https://justcoding121.github.io/Windows-User-Action-Hook/api/EventHook.html)
+
 ## Supported Events
 
 * Keyboard events
@@ -23,43 +25,54 @@ Install by [nuget](https://www.nuget.org/packages/EventHook)
 ## Sample Code:
 
 ```csharp
-KeyboardWatcher.Start();
-KeyboardWatcher.OnKeyInput += (s, e) =>
+using (var eventHookFactory = new EventHookFactory())
 {
-    Console.WriteLine(string.Format("Key {0} event of key {1}", e.KeyData.EventType, e.KeyData.Keyname));
-};
+    var keyboardWatcher = eventHookFactory.GetKeyboardWatcher();
+    keyboardWatcher.Start();
+    keyboardWatcher.OnKeyInput += (s, e) =>
+    {
+        Console.WriteLine(string.Format("Key {0} event of key {1}", e.KeyData.EventType, e.KeyData.Keyname));
+    };
 
-MouseWatcher.Start();
-MouseWatcher.OnMouseInput += (s, e) =>
-{
-    Console.WriteLine(string.Format("Mouse event {0} at point {1},{2}", e.Message.ToString(), e.Point.x, e.Point.y));
-};
+    var mouseWatcher = eventHookFactory.GetMouseWatcher();
+    mouseWatcher.Start();
+    mouseWatcher.OnMouseInput += (s, e) =>
+    {
+        Console.WriteLine(string.Format("Mouse event {0} at point {1},{2}", e.Message.ToString(), e.Point.x, e.Point.y));
+    };
 
-ClipboardWatcher.Start();
-ClipboardWatcher.OnClipboardModified += (s, e) =>
-{
-    Console.WriteLine(string.Format("Clipboard updated with data '{0}' of format {1}", e.Data, e.DataFormat.ToString()));
-};
+    var clipboardWatcher = eventHookFactory.GetClipboardWatcher();
+    clipboardWatcher.Start();
+    clipboardWatcher.OnClipboardModified += (s, e) =>
+    {
+        Console.WriteLine(string.Format("Clipboard updated with data '{0}' of format {1}", e.Data, e.DataFormat.ToString()));
+    };
 
-ApplicationWatcher.Start();
-ApplicationWatcher.OnApplicationWindowChange += (s, e) =>
-{
-    Console.WriteLine(string.Format("Application window of '{0}' with the title '{1}' was {2}", e.ApplicationData.AppName, e.ApplicationData.AppTitle, e.Event));
-};
 
-PrintWatcher.Start();
-PrintWatcher.OnPrintEvent += (s, e) =>
-{
-    Console.WriteLine(string.Format("Printer '{0}' currently printing {1} pages.", e.EventData.PrinterName, e.EventData.Pages));
-};
+    var applicationWatcher = eventHookFactory.GetApplicationWatcher();
+    applicationWatcher.Start();
+    applicationWatcher.OnApplicationWindowChange += (s, e) =>
+    {
+        Console.WriteLine(string.Format("Application window of '{0}' with the title '{1}' was {2}", e.ApplicationData.AppName, e.ApplicationData.AppTitle, e.Event));
+    };
 
-Console.Read();
+    var printWatcher = eventHookFactory.GetPrintWatcher();
+    printWatcher.Start();
+    printWatcher.OnPrintEvent += (s, e) =>
+    {
+        Console.WriteLine(string.Format("Printer '{0}' currently printing {1} pages.", e.EventData.PrinterName, e.EventData.Pages));
+    };
 
-KeyboardWatcher.Stop();
-MouseWatcher.Stop();
-ClipboardWatcher.Stop();
-ApplicationWatcher.Stop();
-PrintWatcher.Stop(); 
+    //waiting here to keep this thread running           
+    Console.Read();
+
+    //stop watching
+    keyboardWatcher.Stop();
+    mouseWatcher.Stop();
+    clipboardWatcher.Stop();
+    applicationWatcher.Stop();
+    printWatcher.Stop();
+}
 ```
 
 ![alt tag](https://raw.githubusercontent.com/justcoding121/Windows-User-Action-Hook/stable/EventHook.Examples/EventHook.ConsoleApp.Example/Capture.PNG)

@@ -1,14 +1,14 @@
-﻿using EventHook.Hooks;
-using EventHook.Helpers;
-using Nito.AsyncEx;
-using System;
+﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using EventHook.Helpers;
+using EventHook.Hooks;
 
 namespace EventHook
 {
     /// <summary>
-    /// Type of clipboard content
+    ///     Type of clipboard content
     /// </summary>
     public enum ClipboardContentTypes
     {
@@ -20,7 +20,7 @@ namespace EventHook
     }
 
     /// <summary>
-    /// An argument send to user
+    ///     An argument send to user
     /// </summary>
     public class ClipboardEventArgs : EventArgs
     {
@@ -29,120 +29,127 @@ namespace EventHook
     }
 
     /// <summary>
-    /// Wraps around clipboardHook
-    /// Uses a producer-consumer pattern to improve performance and to avoid operating system forcing unhook on delayed user callbacks
+    ///     Wraps around clipboardHook
+    ///     Uses a producer-consumer pattern to improve performance and to avoid operating system forcing unhook on delayed
+    ///     user callbacks
     /// </summary>
     public class ClipboardWatcher
     {
-        /*Clip board monitor*/
-        public static bool isRunning;
-        private static object accesslock = new object();
+        private readonly object accesslock = new object();
 
-        private static ClipBoardHook clip;
-        private static AsyncCollection<object> clipQueue;
+        private readonly SyncFactory factory;
 
-        public static event EventHandler<ClipboardEventArgs> OnClipboardModified;
+        private ClipBoardHook clip;
+        private AsyncConcurrentQueue<object> clipQueue;
+        public bool isRunning;
+        private CancellationTokenSource taskCancellationTokenSource;
+
+        internal ClipboardWatcher(SyncFactory factory)
+        {
+            this.factory = factory;
+        }
+
+        public event EventHandler<ClipboardEventArgs> OnClipboardModified;
 
         /// <summary>
-        /// Start watching
+        ///     Start watching
         /// </summary>
-        public static void Start()
+        public void Start()
         {
-            if (!isRunning)
+            lock (accesslock)
             {
-                lock (accesslock)
+                if (!isRunning)
                 {
-                    try
-                    {
-                        clipQueue = new AsyncCollection<object>();
+                    taskCancellationTokenSource = new CancellationTokenSource();
+                    clipQueue = new AsyncConcurrentQueue<object>(taskCancellationTokenSource.Token);
 
-                        //Low level hooks need to be run in the context of a UI thread
-                        Task.Factory.StartNew(() => { }).ContinueWith(x =>
+                    //This needs to run on UI thread context
+                    //So use task factory with the shared UI message pump thread
+                    Task.Factory.StartNew(() =>
                         {
                             clip = new ClipBoardHook();
                             clip.RegisterClipboardViewer();
                             clip.ClipBoardChanged += ClipboardHandler;
+                        },
+                        CancellationToken.None,
+                        TaskCreationOptions.None,
+                        factory.GetTaskScheduler()).Wait();
 
-                        }, SharedMessagePump.GetTaskScheduler());
+                    Task.Factory.StartNew(() => ClipConsumerAsync());
 
-                        Task.Factory.StartNew(() => ClipConsumerAsync());
-
-                        isRunning = true;
-
-                    }
-                    catch
-                    {
-                        if (clip != null)
-                        {
-                            Stop();
-                        }
-                    }
+                    isRunning = true;
                 }
             }
         }
 
         /// <summary>
-        /// Stop watching
+        ///     Stop watching
         /// </summary>
-        public static void Stop()
+        public void Stop()
         {
-            if (isRunning)
+            lock (accesslock)
             {
-                lock (accesslock)
+                if (isRunning)
                 {
                     if (clip != null)
                     {
-                        Task.Factory.StartNew(() => { }).ContinueWith(x =>
-                        {
-                            clip.ClipBoardChanged -= ClipboardHandler;
-                            clip.UnregisterClipboardViewer();
-                            clip.Dispose();
-
-                        }, SharedMessagePump.GetTaskScheduler());
+                        //This needs to run on UI thread context
+                        //So use task factory with the shared UI message pump thread
+                        Task.Factory.StartNew(() =>
+                            {
+                                clip.ClipBoardChanged -= ClipboardHandler;
+                                clip.UnregisterClipboardViewer();
+                                clip.Dispose();
+                            },
+                            CancellationToken.None,
+                            TaskCreationOptions.None,
+                            factory.GetTaskScheduler());
                     }
 
                     isRunning = false;
-                    clipQueue.Add(false);
+                    clipQueue.Enqueue(false);
+                    taskCancellationTokenSource.Cancel();
                 }
             }
-
         }
 
         /// <summary>
-        /// Add event to producer queue
+        ///     Add event to producer queue
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private static void ClipboardHandler(object sender, EventArgs e)
+        private void ClipboardHandler(object sender, EventArgs e)
         {
-            clipQueue.Add(sender);
+            clipQueue.Enqueue(sender);
         }
 
         /// <summary>
-        /// Consume event from producer queue asynchronously
+        ///     Consume event from producer queue asynchronously
         /// </summary>
         /// <returns></returns>
-        private static async Task ClipConsumerAsync()
+        private async Task ClipConsumerAsync()
         {
             while (isRunning)
             {
-                var item = await clipQueue.TakeAsync();
-                if (item is bool) break;
+                var item = await clipQueue.DequeueAsync();
+                if (item is bool)
+                {
+                    break;
+                }
 
                 ClipboardHandler(item);
             }
-
         }
 
         /// <summary>
-        /// Actual handler to invoke user call backs
+        ///     Actual handler to invoke user call backs
         /// </summary>
         /// <param name="sender"></param>
-        private static void ClipboardHandler(object sender)
+        private void ClipboardHandler(object sender)
         {
             IDataObject iData = (DataObject)sender;
 
-            ClipboardContentTypes format = default(ClipboardContentTypes);
+            var format = default(ClipboardContentTypes);
 
             object data = null;
 
@@ -152,28 +159,24 @@ namespace EventHook
                 format = ClipboardContentTypes.PlainText;
                 data = iData.GetData(DataFormats.Text);
                 validDataType = true;
-
             }
             else if (iData.GetDataPresent(DataFormats.Rtf))
             {
                 format = ClipboardContentTypes.RichText;
                 data = iData.GetData(DataFormats.Rtf);
                 validDataType = true;
-
             }
             else if (iData.GetDataPresent(DataFormats.CommaSeparatedValue))
             {
                 format = ClipboardContentTypes.Csv;
                 data = iData.GetData(DataFormats.CommaSeparatedValue);
                 validDataType = true;
-
             }
             else if (iData.GetDataPresent(DataFormats.Html))
             {
                 format = ClipboardContentTypes.Html;
                 data = iData.GetData(DataFormats.Html);
                 validDataType = true;
-
             }
 
             else if (iData.GetDataPresent(DataFormats.StringFormat))
@@ -181,20 +184,20 @@ namespace EventHook
                 format = ClipboardContentTypes.PlainText;
                 data = iData.GetData(DataFormats.StringFormat);
                 validDataType = true;
-
             }
             else if (iData.GetDataPresent(DataFormats.UnicodeText))
             {
                 format = ClipboardContentTypes.UnicodeText;
                 data = iData.GetData(DataFormats.UnicodeText);
                 validDataType = true;
-
             }
 
-            if (!validDataType) return;
+            if (!validDataType)
+            {
+                return;
+            }
 
-            OnClipboardModified?.Invoke(null, new ClipboardEventArgs() { Data = data, DataFormat = format });
-
+            OnClipboardModified?.Invoke(null, new ClipboardEventArgs { Data = data, DataFormat = format });
         }
     }
 }
