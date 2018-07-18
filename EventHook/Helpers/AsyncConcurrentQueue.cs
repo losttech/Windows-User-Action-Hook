@@ -46,26 +46,26 @@ namespace EventHook.Helpers
         /// <summary>
         ///     Assumes a single-threaded consumer!
         /// </summary>
-        /// <returns></returns>
         internal async Task<T> DequeueAsync()
         {
-            T result;
-            queue.TryDequeue(out result);
-
-            if (result != null)
+            while (true)
             {
-                return result;
+                taskCancellationToken.ThrowIfCancellationRequested();
+
+                T result;
+
+                if (queue.TryDequeue(out result))
+                {
+                    return result;
+                }
+
+                await dequeueTaskLock.WaitAsync();
+                dequeueTask = new TaskCompletionSource<bool>();
+                dequeueTaskLock.Release();
+
+                taskCancellationToken.Register(() => dequeueTask.TrySetCanceled());
+                await dequeueTask.Task;
             }
-
-            await dequeueTaskLock.WaitAsync();
-            dequeueTask = new TaskCompletionSource<bool>();
-            dequeueTaskLock.Release();
-
-            taskCancellationToken.Register(() => dequeueTask.TrySetCanceled());
-            await dequeueTask.Task;
-            
-            queue.TryDequeue(out result);
-            return result;
         }
     }
 }
