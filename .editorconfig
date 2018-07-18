@@ -1,0 +1,4 @@
+[*.cs]
+csharp_style_var_for_built_in_types = true
+
+dotnet_style_qualification_for_field = false
