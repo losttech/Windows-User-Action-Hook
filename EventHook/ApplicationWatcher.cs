@@ -28,6 +28,7 @@ namespace EventHook
         public string AppPath { get; set; }
         public string AppName { get; set; }
         public string AppTitle { get; set; }
+        public DateTimeOffset? CreationTime { get; set; }
     }
 
     /// <summary>
@@ -37,6 +38,15 @@ namespace EventHook
     {
         public WindowData ApplicationData { get; set; }
         public ApplicationEvents Event { get; set; }
+    }
+
+    /// <summary>
+    /// Event data for window change
+    /// </summary>
+    public class WindowOverrideEventArgs : EventArgs
+    {
+        public WindowData NewWindow { get; set; }
+        public WindowData OldWindow { get; set; }
     }
 
     /// <summary>
@@ -75,6 +85,11 @@ namespace EventHook
         }
 
         public event EventHandler<ApplicationEventArgs> OnApplicationWindowChange;
+        /// <summary>
+        /// Occurs, when a window appears with the same <see cref="WindowData.HWnd"/> as a known existing window.
+        /// In this case <see cref="ApplicationWatcher"/> stops tracking the <see cref="WindowOverrideEventArgs.OldWindow">old window</see>.
+        /// </summary>
+        public event EventHandler<WindowOverrideEventArgs> OnWindowOverride;
 
         /// <summary>
         ///     Start to watch
@@ -149,14 +164,12 @@ namespace EventHook
         /// <param name="hWnd"></param>
         private void WindowCreated(ShellHook shellObject, IntPtr hWnd)
         {
-            appQueue.Enqueue(new WindowData { HWnd = hWnd, EventType = 0 });
+            appQueue.Enqueue(new WindowData { HWnd = hWnd, EventType = 0, CreationTime = DateTimeOffset.Now });
         }
 
         /// <summary>
         ///     An existing desktop window was destroyed
         /// </summary>
-        /// <param name="shellObject"></param>
-        /// <param name="hWnd"></param>
         private void WindowDestroyed(ShellHook shellObject, IntPtr hWnd)
         {
             appQueue.Enqueue(new WindowData { HWnd = hWnd, EventType = 2 });
@@ -165,8 +178,6 @@ namespace EventHook
         /// <summary>
         ///     A windows was brought to foreground
         /// </summary>
-        /// <param name="shellObject"></param>
-        /// <param name="hWnd"></param>
         private void WindowActivated(ShellHook shellObject, IntPtr hWnd)
         {
             appQueue.Enqueue(new WindowData { HWnd = hWnd, EventType = 1 });
@@ -178,7 +189,6 @@ namespace EventHook
         ///     OS will unsubscribe the hook
         ///     Producer-consumer
         /// </summary>
-        /// <returns></returns>
         private async Task AppConsumer()
         {
             while (isRunning)
@@ -209,10 +219,19 @@ namespace EventHook
         /// <summary>
         ///     A window got created
         /// </summary>
-        /// <param name="wnd"></param>
         private void WindowCreated(WindowData wnd)
         {
-            activeWindows.Add(wnd.HWnd, wnd);
+            activeWindows.TryGetValue(wnd.HWnd, out var oldWindow);
+            UpdateWindowData(wnd);
+            activeWindows[wnd.HWnd] = wnd;
+
+            if (oldWindow != null)
+            {
+                this.OnWindowOverride?.Invoke(this, new WindowOverrideEventArgs {
+                    NewWindow = wnd,
+                    OldWindow = oldWindow,
+                });
+            }
             ApplicationStatus(wnd, ApplicationEvents.Launched);
 
             lastEventWasLaunched = true;
@@ -235,7 +254,6 @@ namespace EventHook
         /// <summary>
         ///     Remove handle from active window collection
         /// </summary>
-        /// <param name="wnd"></param>
         private void WindowDestroyed(WindowData wnd)
         {
             if (activeWindows.ContainsKey(wnd.HWnd))
@@ -251,20 +269,24 @@ namespace EventHook
         /// <summary>
         ///     invoke user call back
         /// </summary>
-        /// <param name="wnd"></param>
-        /// <param name="appEvent"></param>
         private void ApplicationStatus(WindowData wnd, ApplicationEvents appEvent)
         {
             var timeStamp = DateTime.Now;
 
-            wnd.AppTitle = appEvent == ApplicationEvents.Closed ? wnd.AppTitle : WindowHelper.GetWindowText(wnd.HWnd);
-            wnd.AppPath = appEvent == ApplicationEvents.Closed ? wnd.AppPath : WindowHelper.GetAppPath(wnd.HWnd);
-            wnd.AppName = appEvent == ApplicationEvents.Closed
-                ? wnd.AppName
-                : WindowHelper.GetAppDescription(wnd.AppPath);
+            if (appEvent != ApplicationEvents.Closed)
+            {
+                UpdateWindowData(wnd);
+            }
 
             OnApplicationWindowChange?.Invoke(null,
                 new ApplicationEventArgs { ApplicationData = wnd, Event = appEvent });
+        }
+
+        static void UpdateWindowData(WindowData wnd)
+        {
+            wnd.AppTitle = WindowHelper.GetWindowText(wnd.HWnd);
+            wnd.AppPath = WindowHelper.GetAppPath(wnd.HWnd);
+            wnd.AppName = WindowHelper.GetAppDescription(wnd.AppPath);
         }
     }
 }
