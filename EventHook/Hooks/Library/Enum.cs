@@ -1,5 +1,7 @@
 ﻿namespace EventHook.Hooks.Library
 {
+    using System;
+
     internal enum ShellEvents
     {
         HSHELL_WINDOWCREATED = 1,
@@ -21,6 +23,7 @@
         HSHELL_RUDEAPPACTIVATED = HSHELL_WINDOWACTIVATED | HSHELL_HIGHBIT
     }
 
+    [Flags]
     internal enum WindowStyle
     {
         WS_OVERLAPPED = 0x00000000,
@@ -37,6 +40,7 @@
         WS_DLGFRAME = 0x00400000,
         WS_VSCROLL = 0x00200000,
         WS_HSCROLL = 0x00100000,
+        /// <summary>The window has a window menu on its title bar. The WS_CAPTION style must also be specified.</summary>
         WS_SYSMENU = 0x00080000,
         WS_THICKFRAME = 0x00040000,
         WS_GROUP = 0x00020000,
@@ -54,6 +58,7 @@
         WS_CHILDWINDOW = WS_CHILD
     }
 
+    [Flags]
     internal enum WindowStyleEx
     {
         WS_EX_DLGMODALFRAME = 0x00000001,

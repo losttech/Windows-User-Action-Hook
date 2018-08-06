@@ -106,27 +106,32 @@ namespace EventHook.Hooks
 
         private static bool IsAppWindow(IntPtr hWnd)
         {
-            if ((GetWindowLong(hWnd, (int)GWLIndex.GWL_STYLE) & (int)WindowStyle.WS_SYSMENU) == 0)
-            {
-                return false;
-            }
-
             if (User32.IsWindowVisible(hWnd))
             {
-                if ((GetWindowLong(hWnd, (int)GWLIndex.GWL_EXSTYLE) & (int)WindowStyleEx.WS_EX_TOOLWINDOW) != 0)
+                var extendedStyle = GetExtendedStyle(hWnd);
+                if (extendedStyle.HasFlag(WindowStyleEx.WS_EX_TOOLWINDOW))
                 {
                     return false;
                 }
 
                 var hwndOwner = User32.GetWindow(hWnd, (int)GetWindowContstants.GW_OWNER);
-                return (GetWindowLong(hwndOwner, (int)GWLIndex.GWL_STYLE) &
-                        ((int)WindowStyle.WS_VISIBLE | (int)WindowStyle.WS_CLIPCHILDREN)) !=
-                       ((int)WindowStyle.WS_VISIBLE | (int)WindowStyle.WS_CLIPCHILDREN) ||
-                       (GetWindowLong(hwndOwner, (int)GWLIndex.GWL_EXSTYLE) & (int)WindowStyleEx.WS_EX_TOOLWINDOW) !=
-                       0;
+                return (GetStyle(hwndOwner) &
+                        (WindowStyle.WS_VISIBLE | WindowStyle.WS_CLIPCHILDREN)) !=
+                       (WindowStyle.WS_VISIBLE | WindowStyle.WS_CLIPCHILDREN) ||
+                       GetExtendedStyle(hwndOwner).HasFlag(WindowStyleEx.WS_EX_TOOLWINDOW);
             }
 
             return false;
+        }
+
+        private static WindowStyleEx GetExtendedStyle(IntPtr hWnd)
+        {
+            return (WindowStyleEx)GetWindowLong(hWnd, (int)GWLIndex.GWL_EXSTYLE);
+        }
+
+        private static WindowStyle GetStyle(IntPtr hWnd)
+        {
+            return (WindowStyle)GetWindowLong(hWnd, (int)GWLIndex.GWL_STYLE);
         }
 
         private static int GetWindowLong(IntPtr hWnd, int nIndex)
