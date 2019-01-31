@@ -69,6 +69,7 @@ namespace EventHook.Hooks
                         break;
 
                     case ShellEvents.HSHELL_WINDOWACTIVATED:
+                    case ShellEvents.HSHELL_RUDEAPPACTIVATED:
                         WindowActivated?.Invoke(this, m.LParam);
                         break;
                 }
