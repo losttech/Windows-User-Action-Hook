@@ -256,11 +256,13 @@ namespace EventHook
         /// </summary>
         private void WindowDestroyed(WindowData wnd)
         {
-            if (activeWindows.ContainsKey(wnd.HWnd))
+            if (activeWindows.TryGetValue(wnd.HWnd, out var storedData))
             {
-                ApplicationStatus(activeWindows[wnd.HWnd], ApplicationEvents.Closed);
+                wnd = storedData;
                 activeWindows.Remove(wnd.HWnd);
             }
+
+            ApplicationStatus(wnd, ApplicationEvents.Closed);
 
             lastEventWasLaunched = false;
         }
