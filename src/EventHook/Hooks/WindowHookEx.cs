@@ -57,6 +57,13 @@
             remove => this.EventRemove(ref this.textChanged, value, WindowEvent.NameChanged);
         }
 
+        EventHandler<WindowEventArgs> destroyed;
+        /// <summary>Occurs when window is destroyed</summary>
+        public event EventHandler<WindowEventArgs> Destroyed {
+            add => this.EventAdd(ref this.destroyed, value, WindowEvent.ObjectDestroy);
+            remove => this.EventRemove(ref this.destroyed, value, WindowEvent.ObjectDestroy);
+        }
+
         void EventAdd(ref EventHandler<WindowEventArgs> handler, EventHandler<WindowEventArgs> user,
             WindowEvent @event) {
             lock (this.hooks) {
@@ -88,6 +95,7 @@
             case WindowEvent.ForegroundChanged: handler = this.activated; break;
             case WindowEvent.NameChanged: handler = this.textChanged; break;
             case WindowEvent.Minimized: handler = this.minimized; break;
+            case WindowEvent.ObjectDestroy: handler = this.destroyed; break;
             case WindowEvent.Unmiminized: handler = this.unminimized; break;
             default: Debug.Write($"Unexpected event {@event}"); return;
             }
@@ -161,6 +169,7 @@
         enum WindowEvent
         {
             ForegroundChanged = 0x03,
+            ObjectDestroy = 0x8001,
             NameChanged = 0x800C,
             Minimized = 0x0016,
             Unmiminized = 0x0017,
